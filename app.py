@@ -4,13 +4,9 @@ import os
 import requests
 
 app = Flask(__name__)
-# Render-এর জন্য ডাউনলোড ফোল্ডার নিশ্চিত করা
-DOWNLOAD_FOLDER = '/tmp/downloads' 
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
 
-# এনভায়রনমেন্ট ভেরিয়েবল থেকে কি নিন (Render Settings-এ সেট করবেন)
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+# Render-এর জন্য টেম্পোরারি ফোল্ডার ব্যবহার করা
+DOWNLOAD_FOLDER = '/tmp'
 
 @app.route('/')
 def index():
@@ -20,7 +16,8 @@ def index():
 def search():
     query = request.args.get('q', 'Bangla hit songs')
     page_token = request.args.get('pageToken', '')
-    url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=12&q={query}&type=video&pageToken={page_token}&key={YOUTUBE_API_KEY}"
+    api_key = os.environ.get("YOUTUBE_API_KEY") # Render Settings থেকে সেট করুন
+    url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=12&q={query}&type=video&pageToken={page_token}&key={api_key}"
     try:
         r = requests.get(url).json()
         videos = []
@@ -31,18 +28,23 @@ def search():
                 "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
             })
         return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
-    except:
-        return jsonify({"videos": [], "nextPageToken": ""})
+    except Exception as e:
+        return jsonify({"error": str(e), "videos": []})
 
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    ydl_opts = {'quiet': True, 'noplaylist': True}
+    # yt-dlp অপশন আপডেট (সার্ভারের জন্য হালকা)
+    ydl_opts = {'quiet': True, 'no_warnings': True}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=False)
+            # সরাসরি স্ট্রিম লিঙ্ক বের করা
             formats = info.get('formats', [])
-            play_url = next((f['url'] for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4'), info.get('url'))
+            # ভিডিও ফরম্যাট খুঁজে বের করা
+            video_stream = next((f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none'), None)
+            play_url = video_stream['url'] if video_stream else info.get('url')
+            
             return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -50,25 +52,22 @@ def get_info():
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
-    quality = request.args.get('quality', '720p')
-    q_map = {
-        '1080p': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-        '720p': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-        'mp3': 'bestaudio/best'
-    }
+    # ডাউনলোড করার সময় FFmpeg এর সমস্যা এড়াতে শুধু mp4 ফরম্যাট সিলেক্ট করা
     ydl_opts = {
-        'format': q_map.get(quality, 'best'),
+        'format': 'best[ext=mp4]',
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
     }
-    if quality == 'mp3':
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
-
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(video_url, download=True)
         filename = ydl.prepare_filename(info)
-        if quality == 'mp3': filename = filename.rsplit('.', 1)[0] + '.mp3'
         return send_file(filename, as_attachment=True)
+
+@app.route('/get_downloads')
+def get_downloads():
+    files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith('.mp4')]
+    return jsonify(files)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+            
