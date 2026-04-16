@@ -32,14 +32,16 @@ def search():
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    # সিকিউরিটি এবং এরর এড়াতে নতুন অপশন
-    ydl_opts = {'quiet': True, 'no_warnings': True}
+    # cookies.txt ফাইল ব্যবহার করে yt-dlp চালানো
+    ydl_opts = {
+        'quiet': True, 
+        'no_warnings': True,
+        'cookiefile': 'cookies.txt' 
+    }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
-            # সরাসরি MP4 ফরম্যাট খুঁজো
             formats = info.get('formats', [])
-            # অডিও-ভিডিও যুক্ত স্ট্রিম খুঁজে বের করা
             stream = next((f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none' and f.get('acodec') != 'none'), info)
             return jsonify({"title": info.get('title'), "video_url": stream.get('url'), "url": video_url})
     except Exception as e:
@@ -48,10 +50,11 @@ def get_info():
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
-    # FFmpeg ছাড়াই ডাউনলোড সম্ভব এমন ফরম্যাট ব্যবহার করা
+    # ডাউনলোড এর ক্ষেত্রেও কুকি ব্যবহার
     ydl_opts = {
         'format': 'best[ext=mp4]', 
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
+        'cookiefile': 'cookies.txt'
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(video_url, download=True)
@@ -66,4 +69,4 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
+        
