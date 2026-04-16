@@ -6,6 +6,8 @@ import requests
 app = Flask(__name__)
 # Render-এর জন্য টেম্পোরারি ফোল্ডার
 DOWNLOAD_FOLDER = '/tmp'
+# কুকি ফাইলের সঠিক পাথ সেট করা
+COOKIE_PATH = os.path.join(os.getcwd(), 'cookies.txt')
 
 @app.route('/')
 def index():
@@ -33,21 +35,20 @@ def search():
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    # ফরম্যাট ফিল্টার পরিবর্তন করে সব ফরম্যাট খোঁজার ব্যবস্থা
+    # উন্নত ydl_opts কনফিগারেশন
     ydl_opts = {
         'quiet': True, 
         'no_warnings': True,
-        'cookiefile': 'cookies.txt',
-        'format': 'bestvideo+bestaudio/best' # এটি অডিও এবং ভিডিও দুটোই ভালো মানের খুঁজে বের করবে
+        'cookiefile': COOKIE_PATH,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # সরাসরি স্ট্রিমিং লিঙ্ক খুঁজে বের করা
             play_url = info.get('url')
             if 'formats' in info:
-                # যেসব ফরম্যাটে অডিও-ভিডিও দুটোই আছে সেগুলো Priority দেওয়া
                 for f in info['formats']:
                     if f.get('url') and f.get('vcodec') != 'none' and f.get('acodec') != 'none':
                         play_url = f.get('url')
@@ -55,16 +56,16 @@ def get_info():
             
             return jsonify({"title": info.get('title'), "video_url": play_url, "url": video_url})
     except Exception as e:
-        return jsonify({"error": f"লিঙ্কটি পাওয়া যায়নি বা ফরম্যাট সাপোর্ট করছে না: {str(e)}"}), 500
+        return jsonify({"error": f"লিঙ্কটি পাওয়া যায়নি: {str(e)}"}), 500
 
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
-    # ডাউনলোড করার জন্য 'best' বা সবথেকে ভালো ভিডিওটি বেছে নেওয়া
     ydl_opts = {
         'format': 'best', 
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
-        'cookiefile': 'cookies.txt'
+        'cookiefile': COOKIE_PATH,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -74,12 +75,7 @@ def download():
     except Exception as e:
         return f"ডাউনলোড ব্যর্থ হয়েছে: {str(e)}", 500
 
-@app.route('/get_downloads')
-def get_downloads():
-    files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith('.mp4') or f.endswith('.webm')]
-    return jsonify(files)
-
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-                          
+    
