@@ -26,7 +26,6 @@
         .section { display: none; padding-top: 10px; }
         .section.active { display: block; }
 
-        video { width: 100%; border-radius: 10px; background: #000; }
         .download-btn { border-radius: 50px; font-weight: bold; font-size: 12px; margin: 2px; }
         .list-item { background: #222; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
     </style>
@@ -35,7 +34,7 @@
 
 <div class="header">
     <div class="input-group">
-        <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search song or paste YouTube link...">
+        <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search or paste link...">
         <button class="btn btn-danger rounded-circle ms-2" onclick="handleSearch()"><i class="fas fa-search"></i></button>
     </div>
 </div>
@@ -47,7 +46,7 @@
     </div>
 
     <div id="playing-sec" class="section">
-        <video id="mainVideo" controls autoplay></video>
+        <video id="mainVideo" controls autoplay playsinline style="width:100%;"></video>
         <div class="p-3 mt-2 bg-dark rounded shadow">
             <h6 id="playTitle">No Video Selected</h6>
             <div class="d-flex flex-wrap mt-3">
@@ -103,14 +102,19 @@
     async function playThis(url, title) {
         playingUrl = url;
         showSection('playing');
-        document.getElementById('playTitle').innerText = "Loading details...";
+        document.getElementById('playTitle').innerText = "Loading...";
         const fd = new FormData();
         fd.append('url', url);
         const res = await fetch('/get_info', {method: 'POST', body: fd});
         const data = await res.json();
-        document.getElementById('mainVideo').src = data.video_url;
-        document.getElementById('playTitle').innerText = data.title;
-        addToHistory(data.title);
+        if(data.video_url) {
+            const vid = document.getElementById('mainVideo');
+            vid.src = data.video_url;
+            document.getElementById('playTitle').innerText = data.title;
+        } else {
+            alert("Error: Video link not found!");
+        }
+        addToHistory(data.title || "Unknown");
     }
 
     function showSection(name) {
@@ -156,5 +160,4 @@
     window.onload = () => loadVideos(currentQuery);
 </script>
 </body>
-  </html>
-  
+</html>
