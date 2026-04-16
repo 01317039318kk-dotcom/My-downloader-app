@@ -33,33 +33,34 @@ def search():
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    # cookies.txt ফাইল ব্যবহার করে yt-dlp চালানো
+    # ফরম্যাট ফিল্টার পরিবর্তন করে সব ফরম্যাট খোঁজার ব্যবস্থা
     ydl_opts = {
         'quiet': True, 
         'no_warnings': True,
-        'cookiefile': 'cookies.txt' 
+        'cookiefile': 'cookies.txt',
+        'format': 'bestvideo+bestaudio/best' # এটি অডিও এবং ভিডিও দুটোই ভালো মানের খুঁজে বের করবে
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # সব ফরম্যাটের মধ্যে যেটা সরাসরি প্লে করা যায় তা নেওয়া
+            # সরাসরি স্ট্রিমিং লিঙ্ক খুঁজে বের করা
             play_url = info.get('url')
             if 'formats' in info:
+                # যেসব ফরম্যাটে অডিও-ভিডিও দুটোই আছে সেগুলো Priority দেওয়া
                 for f in info['formats']:
-                    # vcodec এবং acodec থাকলে তা সেরা স্ট্রিম
-                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
+                    if f.get('url') and f.get('vcodec') != 'none' and f.get('acodec') != 'none':
                         play_url = f.get('url')
                         break
             
             return jsonify({"title": info.get('title'), "video_url": play_url, "url": video_url})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"লিঙ্কটি পাওয়া যায়নি বা ফরম্যাট সাপোর্ট করছে না: {str(e)}"}), 500
 
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
-    # ফরম্যাট ফিল্টার কমিয়ে 'best' ব্যবহার করা
+    # ডাউনলোড করার জন্য 'best' বা সবথেকে ভালো ভিডিওটি বেছে নেওয়া
     ydl_opts = {
         'format': 'best', 
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
@@ -71,7 +72,7 @@ def download():
             filename = ydl.prepare_filename(info)
             return send_file(filename, as_attachment=True)
     except Exception as e:
-        return str(e), 500
+        return f"ডাউনলোড ব্যর্থ হয়েছে: {str(e)}", 500
 
 @app.route('/get_downloads')
 def get_downloads():
@@ -81,4 +82,4 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
+                          
