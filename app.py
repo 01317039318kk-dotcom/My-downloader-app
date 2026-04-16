@@ -4,6 +4,7 @@ import os
 import requests
 
 app = Flask(__name__)
+# Render-এর জন্য টেম্পোরারি ফোল্ডার
 DOWNLOAD_FOLDER = '/tmp'
 
 @app.route('/')
@@ -41,32 +42,43 @@ def get_info():
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
-            formats = info.get('formats', [])
-            stream = next((f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none' and f.get('acodec') != 'none'), info)
-            return jsonify({"title": info.get('title'), "video_url": stream.get('url'), "url": video_url})
+            
+            # সব ফরম্যাটের মধ্যে যেটা সরাসরি প্লে করা যায় তা নেওয়া
+            play_url = info.get('url')
+            if 'formats' in info:
+                for f in info['formats']:
+                    # vcodec এবং acodec থাকলে তা সেরা স্ট্রিম
+                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
+                        play_url = f.get('url')
+                        break
+            
+            return jsonify({"title": info.get('title'), "video_url": play_url, "url": video_url})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
-    # ডাউনলোড এর ক্ষেত্রেও কুকি ব্যবহার
+    # ফরম্যাট ফিল্টার কমিয়ে 'best' ব্যবহার করা
     ydl_opts = {
-        'format': 'best[ext=mp4]', 
+        'format': 'best', 
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'cookiefile': 'cookies.txt'
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=True)
-        filename = ydl.prepare_filename(info)
-        return send_file(filename, as_attachment=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            filename = ydl.prepare_filename(info)
+            return send_file(filename, as_attachment=True)
+    except Exception as e:
+        return str(e), 500
 
 @app.route('/get_downloads')
 def get_downloads():
-    files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith('.mp4')]
+    files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith('.mp4') or f.endswith('.webm')]
     return jsonify(files)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-        
+    
