@@ -4,8 +4,6 @@ import os
 import requests
 
 app = Flask(__name__)
-
-# Render-এর জন্য টেম্পোরারি ফোল্ডার ব্যবহার করা
 DOWNLOAD_FOLDER = '/tmp'
 
 @app.route('/')
@@ -16,7 +14,7 @@ def index():
 def search():
     query = request.args.get('q', 'Bangla hit songs')
     page_token = request.args.get('pageToken', '')
-    api_key = os.environ.get("YOUTUBE_API_KEY") # Render Settings থেকে সেট করুন
+    api_key = os.environ.get("YOUTUBE_API_KEY")
     url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=12&q={query}&type=video&pageToken={page_token}&key={api_key}"
     try:
         r = requests.get(url).json()
@@ -28,33 +26,31 @@ def search():
                 "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
             })
         return jsonify({"videos": videos, "nextPageToken": r.get('nextPageToken', '')})
-    except Exception as e:
-        return jsonify({"error": str(e), "videos": []})
+    except:
+        return jsonify({"videos": [], "nextPageToken": ""})
 
 @app.route('/get_info', methods=['POST'])
 def get_info():
     video_url = request.form.get('url')
-    # yt-dlp অপশন আপডেট (সার্ভারের জন্য হালকা)
+    # সিকিউরিটি এবং এরর এড়াতে নতুন অপশন
     ydl_opts = {'quiet': True, 'no_warnings': True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
-            # সরাসরি স্ট্রিম লিঙ্ক বের করা
+            # সরাসরি MP4 ফরম্যাট খুঁজো
             formats = info.get('formats', [])
-            # ভিডিও ফরম্যাট খুঁজে বের করা
-            video_stream = next((f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none'), None)
-            play_url = video_stream['url'] if video_stream else info.get('url')
-            
-            return jsonify({"title": info['title'], "video_url": play_url, "url": video_url})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            # অডিও-ভিডিও যুক্ত স্ট্রিম খুঁজে বের করা
+            stream = next((f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none' and f.get('acodec') != 'none'), info)
+            return jsonify({"title": info.get('title'), "video_url": stream.get('url'), "url": video_url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/download')
 def download():
     video_url = request.args.get('url')
-    # ডাউনলোড করার সময় FFmpeg এর সমস্যা এড়াতে শুধু mp4 ফরম্যাট সিলেক্ট করা
+    # FFmpeg ছাড়াই ডাউনলোড সম্ভব এমন ফরম্যাট ব্যবহার করা
     ydl_opts = {
-        'format': 'best[ext=mp4]',
+        'format': 'best[ext=mp4]', 
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -70,4 +66,4 @@ def get_downloads():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-            
+    
